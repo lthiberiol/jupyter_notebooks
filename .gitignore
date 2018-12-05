@@ -1,5 +1,6 @@
 *.*
 .ipynb_checkpoints/
+tmp/
 !.gitattributes
 !.gitignore
 !readme.md
