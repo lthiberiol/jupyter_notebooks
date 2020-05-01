@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+# coding: utf-8
+
+#################################################################################
+#                                                                               #
+# Script to retrieve and add taxonomic annotation to newick trees in a          #
+#     FigTree-happy nexus format!                                               #
+#                                                                               #
+#                                         Thiberio Rangel, lthiberiol@gmail.com #
+#                                                                               #
+################################################################################
+
+import ete3
+import re
+import os
+import sys
+import argparse
+import pandas as pd
+from Bio import Entrez
+
+#
+# parse user provided inputs
+#
+parser = argparse.ArgumentParser(description='Testing')
+
+group     = parser.add_mutually_exclusive_group(required=True)
+group.add_argument('-n',
+                   action='store_true',
+                   help='Use scientific name from taxa at the start of leaf names'
+                        '<scientific_name_whatever_comes_afterwards>')
+group.add_argument('-p',
+                   action='store_true',
+                   help='Use protein accession number at the start of leaf names'
+                        '<proteinAcc_whatever_comes_afterwards>')
+
+parser.add_argument('newick_file', type=str, help='newick file to be visualize in figtree')
+
+arguments      = parser.parse_args()
+by_sci_name    = arguments.n
+by_protein_acc = arguments.p
+filename       = arguments.newick_file
+
+#
+# insert here your e-mail for NCBI api accesibility
+#
+Entrez.email = ''
+
+ncbi         = ete3.NCBITaxa()
+
+if os.path.isfile(filename):
+    tree = ete3.Tree(filename, format=1)
+else:
+    raise SystemExit('*ERROR: provided path to newick file does not exist!')
+#
+# if starting with species name
+#
+if by_sci_name:
+    # genera     = []
+    acc2tax    = {}
+    lineage_df = pd.DataFrame()
+    for leaf in tree.get_leaf_names():
+        regex = re.search('^(?:Candidatus_)*([A-Z][a-z]+(?:_[a-z]+\.?)?)',
+                        leaf)
+        if not regex:
+            continue
+
+        tmp_species     = regex.group(1).replace('_', ' ')
+
+        translated_name = ncbi.get_name_translator([tmp_species])
+        if not translated_name and tmp_species.endswith(' sp.'):
+            translated_name = ncbi.get_name_translator([tmp_species.replace(' sp.', '')])
+
+        if not translated_name:
+            continue
+
+        tax_id               = list(translated_name.values())[0][0]
+        acc2tax[tmp_species] = tax_id
+
+        tmp_lineage = pd.Series({rank : taxon
+                                 for taxon, rank in ncbi.get_rank(
+                                     ncbi.get_lineage(tax_id)).items()
+                                })
+        tmp_lineage = pd.Series(index=tmp_lineage.index,
+                                data =ncbi.translate_to_names(tmp_lineage))
+
+        tmp_lineage.name = tax_id
+
+        lineage_df = lineage_df.append(tmp_lineage)
+
+    lineage_df.drop(columns=['no rank'], inplace=True)
+    lineage_df = lineage_df[~lineage_df.index.duplicated()]
+
+#
+# if starting with protein accession
+#
+if by_protein_acc:
+    if not Entrez.email:
+        raise SystemExit('*ERROR: if you must retrieve protein accession from leaf names you must add your email'
+                         'to the <Entrez.email> variable in line 46'
+                         '\n\t(or around that area, not sure if this message will be updated that frequently... '
+                         'my bad)')
+
+    protein_acc = [re.match('((?:\w{2,3}_)?[^_]+)',
+                            leaf).group(1)
+                   for leaf in tree.get_leaf_names()]
+
+    acc2tax    = {}
+    lineage_df = pd.DataFrame()
+    for window_start in range(0, len(protein_acc), 100):
+        tmp_accessions = protein_acc[window_start:window_start+100]
+        annotations    = Entrez.efetch(db='protein',
+                                       rettype='gb',
+                                       retmod='text',
+                                       id=','.join(tmp_accessions)
+                                      ).read()
+
+        for block in annotations.split('\n//\n'):
+            block = block.strip()
+
+            if not block:
+                continue
+
+            tmp_acc, tmp_tax = re.search('^LOCUS\s+(\S+).+db_xref="taxon:(\d+)"',
+                                         block,
+                                         re.S).groups()
+
+            acc2tax[tmp_acc] = int(tmp_tax)
+
+            tmp_lineage = pd.Series({rank : taxon
+                                     for taxon, rank in ncbi.get_rank(
+                                         ncbi.get_lineage(int(tmp_tax))).items()
+                                    })
+            tmp_lineage = pd.Series(index=tmp_lineage.index,
+                                    data =ncbi.translate_to_names(tmp_lineage))
+
+            tmp_lineage.name = int(tmp_tax)
+
+            lineage_df = lineage_df.append(tmp_lineage)
+
+    lineage_df.drop(columns='no rank', inplace=True)
+    lineage_df = lineage_df[~lineage_df.index.duplicated()]
+
+#
+# build FigTree happy nexus file!
+#
+out  = open(f'{filename}.figTree', 'w')
+out.write("#NEXUS\nbegin taxa;\n\tdimensions ntax=%i;\n\ttaxlabels\n" %len(tree))
+
+branch_names = {}
+for count, node in enumerate(tree.traverse()):
+    
+    if node.is_leaf():
+        if by_protein_acc:
+            tmp_acc = re.match('((?:\w{2,3}_)?[^_]+)', node.name).group(1)
+        elif by_sci_name:
+            regex = re.search('^(?:Candidatus_)*([A-Z][a-z]+(?:_[a-z]+\.?)?)', 
+                              node.name)
+            tmp_acc = None
+            if regex:
+                tmp_acc = regex.group(1).replace('_', ' ')
+        else:
+            continue
+
+        if tmp_acc not in acc2tax or            acc2tax[tmp_acc] not in lineage_df.index:
+            out.write(f'\t{node.name}\n')
+            continue
+
+        tmp_tax_id = acc2tax[tmp_acc]
+        
+        out.write(f'\t{node.name} [&')
+        for rank, taxon in lineage_df.loc[tmp_tax_id].items():
+            out.write(f'tax_{rank}="{taxon}"')
+        out.write(']\n')
+
+    else:
+        if '/' in node.name:
+            support_values = node.name.split('/')
+            branch_names[f'_branch_{count}_'] = f'&1st_support={support_values[0]},2n_support={support_values[1]}'
+        else:
+            branch_names[f'_branch_{count}_'] = f'&support={node.name}'
+
+        node.name = '_branch_%i_' % count
+
+
+newick_text = tree.write(format=1, dist_formatter='%.10f')
+for key, value in branch_names.items():
+    newick_text = newick_text.replace(key, '[%s]' % value)
+out.write(';\nend;\n')
+out.write('begin trees;\n\ttree tree_1 = [&R] %s\nend;' %newick_text)
+out.close()
+
