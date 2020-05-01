@@ -20,7 +20,7 @@ import requests
 #
 # parse user provided inputs
 #
-parser = argparse.ArgumentParser(description='Testing')
+parser = argparse.ArgumentParser(description='Add taxonomic tags to nexus leaves for a happy FigTree visualization!')
 
 group     = parser.add_mutually_exclusive_group(required=True)
 group.add_argument('-n',
