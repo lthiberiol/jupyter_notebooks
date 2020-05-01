@@ -39,11 +39,6 @@ by_sci_name    = arguments.n
 by_protein_acc = arguments.p
 filename       = arguments.newick_file
 
-#
-# insert here your e-mail for NCBI api accesibility
-#
-Entrez.email = ''
-
 ncbi         = ete3.NCBITaxa()
 
 if os.path.isfile(filename):
