@@ -33,12 +33,36 @@ group.add_argument('-p',
                    help='Use protein accession number at the start of leaf names'
                         '<proteinAcc_whatever_comes_afterwards>')
 
+group2     = parser.add_argument_group('Annotation features options',
+                                       'Annotated features must be provided as tables '
+                                       'where the first column contain leaf names, exactly as in the tree, and '
+                                       'the first row contain column names. '
+                                       'Accepted formats are CSV (-c), TSV (-t), and Excel (-e).')
+feat_group = group2.add_mutually_exclusive_group(required=False, )
+feat_group.add_argument('-c',
+                        type=str,
+                        help="CSV file containing features to be added to resulting FigTree's nexus")
+feat_group.add_argument('-t',
+                        type=str,
+                        help="Tab-separated file containing features to be added to resulting FigTree's nexus")
+feat_group.add_argument('-e',
+                        type=str,
+                        help="Excel file containing features to be added to resulting FigTree's nexus")
+
 parser.add_argument('newick_file', type=str, help='newick file to be visualize in figtree')
 
 arguments      = parser.parse_args()
 by_sci_name    = arguments.n
 by_protein_acc = arguments.p
 filename       = arguments.newick_file
+
+if   arguments.c:
+    feature_df = pd.read_csv(arguments.c, sep=',', index_col=0)
+elif arguments.t:
+    feature_df = pd.read_csv(arguments.t, sep='\t', index_col=0)
+elif arguments.e:
+    feature_df = pd.read_excel(arguments.e, index_col=0)
+
 
 #
 #################################################################################
@@ -164,6 +188,11 @@ for count, node in enumerate(tree.traverse()):
         for rank, taxon in lineage_df.loc[tmp_tax_id].items():
             rank = rank.replace(' ', '_')
             out.write(f'tax_{rank}="{taxon}" ')
+
+        if node.name in feature_df.index:
+            for column in feature_df.columns:
+                out.write(f'feat_{column}="{feature_df.loc[node.name, column]}" ')
+
         out.write(']\n')
 
     else:
