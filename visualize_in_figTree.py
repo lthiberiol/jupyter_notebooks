@@ -8,7 +8,7 @@
 #                                                                               #
 #                                         Thiberio Rangel, lthiberiol@gmail.com #
 #                                                                               #
-################################################################################
+#################################################################################
 
 import ete3
 import re
@@ -16,8 +16,7 @@ import os
 import sys
 import argparse
 import pandas as pd
-from Bio import Entrez
-
+import requests
 #
 # parse user provided inputs
 #
@@ -94,11 +93,6 @@ if by_sci_name:
 # if starting with protein accession
 #
 if by_protein_acc:
-    if not Entrez.email:
-        raise SystemExit('*ERROR: if you must retrieve protein accession from leaf names you must add your email'
-                         'to the <Entrez.email> variable in line 46'
-                         '\n\t(or around that area, not sure if this message will be updated that frequently... '
-                         'my bad)')
 
     protein_acc = [re.match('((?:\w{2,3}_)?[^_]+)',
                             leaf).group(1)
@@ -108,11 +102,11 @@ if by_protein_acc:
     lineage_df = pd.DataFrame()
     for window_start in range(0, len(protein_acc), 100):
         tmp_accessions = protein_acc[window_start:window_start+100]
-        annotations    = Entrez.efetch(db='protein',
-                                       rettype='gb',
-                                       retmod='text',
-                                       id=','.join(tmp_accessions)
-                                      ).read()
+        annotations    = requests.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?'
+                                      'db=protein&'
+                                      'retmode=text&'
+                                      'rettype=gp&'
+                                      f'id={",".join(tmp_accessions)}').text
 
         for block in annotations.split('\n//\n'):
             block = block.strip()
