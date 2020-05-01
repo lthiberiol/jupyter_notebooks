@@ -17,6 +17,7 @@ import sys
 import argparse
 import pandas as pd
 import requests
+
 #
 # parse user provided inputs
 #
@@ -38,6 +39,9 @@ arguments      = parser.parse_args()
 by_sci_name    = arguments.n
 by_protein_acc = arguments.p
 filename       = arguments.newick_file
+
+#
+#################################################################################
 
 ncbi         = ete3.NCBITaxa()
 
@@ -158,13 +162,14 @@ for count, node in enumerate(tree.traverse()):
         
         out.write(f'\t{node.name} [&')
         for rank, taxon in lineage_df.loc[tmp_tax_id].items():
-            out.write(f'tax_{rank}="{taxon}"')
+            rank = rank.replace(' ', '_')
+            out.write(f'tax_{rank}="{taxon}" ')
         out.write(']\n')
 
     else:
         if '/' in node.name:
             support_values = node.name.split('/')
-            branch_names[f'_branch_{count}_'] = f'&1st_support={support_values[0]},2n_support={support_values[1]}'
+            branch_names[f'_branch_{count}_'] = f'&1st_support={support_values[0]},2nd_support={support_values[1]}'
         else:
             branch_names[f'_branch_{count}_'] = f'&support={node.name}'
 
