@@ -62,6 +62,8 @@ elif arguments.t:
     feature_df = pd.read_csv(arguments.t, sep='\t', index_col=0)
 elif arguments.e:
     feature_df = pd.read_excel(arguments.e, index_col=0)
+else:
+    feature_df = pd.DataFrame()
 
 
 #
