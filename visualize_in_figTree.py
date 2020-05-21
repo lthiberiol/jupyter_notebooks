@@ -117,7 +117,7 @@ if by_sci_name:
 #
 if by_protein_acc:
 
-    protein_acc = [re.match('((?:\w{2,3}_)?[^_]+)',
+    protein_acc = [re.match('((?:\w{2,3}_)?[^_.]+)',
                             leaf).group(1)
                    for leaf in tree.get_leaf_names()]
 
@@ -168,7 +168,7 @@ for count, node in enumerate(tree.traverse()):
     
     if node.is_leaf():
         if by_protein_acc:
-            tmp_acc = re.match('((?:\w{2,3}_)?[^_]+)', node.name).group(1)
+            tmp_acc = re.match('((?:\w{2,3}_)?[^_.]+)', node.name).group(1)
         elif by_sci_name:
             regex = re.search('^(?:Candidatus_)*([A-Z][a-z]+(?:_[a-z]+\.?)?)', 
                               node.name)
