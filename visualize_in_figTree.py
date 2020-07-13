@@ -26,12 +26,16 @@ parser = argparse.ArgumentParser(description='Add taxonomic tags to nexus leaves
 group     = parser.add_mutually_exclusive_group(required=True)
 group.add_argument('-n',
                    action='store_true',
-                   help='Use scientific name from taxa at the start of leaf names'
+                   help='Use scientific name from taxa at the start of leaf names\n'
                         '<scientific_name_whatever_comes_afterwards>')
 group.add_argument('-p',
                    action='store_true',
-                   help='Use protein accession number at the start of leaf names'
+                   help='Use protein accession number at the start of leaf names\n'
                         '<proteinAcc_whatever_comes_afterwards>')
+group.add_argument('-e',
+                   action='store_true',
+                   help="Leaves named in eggNOG's style\n"
+                        '<taxID.locus_tag>')
 
 group2     = parser.add_argument_group('Annotation features options',
                                        'Annotated features must be provided as tables '
@@ -45,7 +49,7 @@ feat_group.add_argument('-c',
 feat_group.add_argument('-t',
                         type=str,
                         help="Tab-separated file containing features to be added to resulting FigTree's nexus")
-feat_group.add_argument('-e',
+feat_group.add_argument('-w',
                         type=str,
                         help="Excel file containing features to be added to resulting FigTree's nexus")
 
@@ -54,14 +58,15 @@ parser.add_argument('newick_file', type=str, help='newick file to be visualize i
 arguments      = parser.parse_args()
 by_sci_name    = arguments.n
 by_protein_acc = arguments.p
+as_eggNOG      = arguments.e
 filename       = arguments.newick_file
 
 if   arguments.c:
     feature_df = pd.read_csv(arguments.c, sep=',', index_col=0)
 elif arguments.t:
     feature_df = pd.read_csv(arguments.t, sep='\t', index_col=0)
-elif arguments.e:
-    feature_df = pd.read_excel(arguments.e, index_col=0)
+elif arguments.w:
+    feature_df = pd.read_excel(arguments.w, index_col=0)
 else:
     feature_df = pd.DataFrame()
 
@@ -75,6 +80,30 @@ if os.path.isfile(filename):
     tree = ete3.Tree(filename, format=1)
 else:
     raise SystemExit('*ERROR: provided path to newick file does not exist!')
+#
+# leaves are names as eggNOG
+#
+if as_eggNOG:
+    acc2tax    = {}
+    lineage_df = pd.DataFrame()
+    for leaf in tree.get_leaf_names():
+        tax_id        = int(leaf.split('.')[0])
+        acc2tax[leaf] = tax_id
+
+        tmp_lineage = pd.Series({rank : taxon
+                                 for taxon, rank in ncbi.get_rank(
+                                     ncbi.get_lineage(tax_id)).items()
+                                })
+        tmp_lineage = pd.Series(index=tmp_lineage.index,
+                                data =ncbi.translate_to_names(tmp_lineage))
+
+        tmp_lineage.name = tax_id
+
+        lineage_df = lineage_df.append(tmp_lineage)
+
+    lineage_df.drop(columns=['no rank'], inplace=True)
+    lineage_df = lineage_df[~lineage_df.index.duplicated()]
+
 #
 # if starting with species name
 #
@@ -177,6 +206,8 @@ for count, node in enumerate(tree.traverse()):
             tmp_acc = None
             if regex:
                 tmp_acc = regex.group(1).replace('_', ' ')
+        elif as_eggNOG:
+            tmp_acc = node.name
         else:
             continue
 
