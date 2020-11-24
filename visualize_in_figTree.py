@@ -26,22 +26,23 @@ parser = argparse.ArgumentParser(description='Add taxonomic tags to nexus leaves
 group     = parser.add_mutually_exclusive_group(required=True)
 group.add_argument('-n',
                    action='store_true',
-                   help='Use scientific name from taxa at the start of leaf names\n'
-                        '<scientific_name_whatever_comes_afterwards>')
+                   help  ='Use scientific name from taxa at the start of leaf names\n'
+                          '<scientific_name_whatever_comes_afterwards>')
 group.add_argument('-p',
                    action='store_true',
-                   help='Use protein accession number at the start of leaf names\n'
-                        '<proteinAcc_whatever_comes_afterwards>')
+                   help  ='Use protein accession number at the start of leaf names\n'
+                          '<proteinAcc_whatever_comes_afterwards>')
 group.add_argument('-e',
                    action='store_true',
-                   help="Leaves named in eggNOG's style\n"
-                        '<taxID.locus_tag>')
+                   help  ="Leaves named in eggNOG's style\n"
+                          '<taxID.locus_tag>')
 
 group2     = parser.add_argument_group('Annotation features options',
                                        'Annotated features must be provided as tables '
                                        'where the first column contain leaf names, exactly as in the tree, and '
                                        'the first row contain column names. '
                                        'Accepted formats are CSV (-c), TSV (-t), and Excel (-e).')
+
 feat_group = group2.add_mutually_exclusive_group(required=False, )
 feat_group.add_argument('-c',
                         type=str,
@@ -53,7 +54,14 @@ feat_group.add_argument('-w',
                         type=str,
                         help="Excel file containing features to be added to resulting FigTree's nexus")
 
-parser.add_argument('newick_file', type=str, help='newick file to be visualize in figtree')
+parser.add_argument('-r', 
+                    required=False,
+                    type    =str, 
+                    help    ='Path to newick containing reference rooting position to match.')
+
+parser.add_argument('newick_file', 
+                    type=str, 
+                    help='newick file to be visualize in figtree')
 
 arguments      = parser.parse_args()
 by_sci_name    = arguments.n
@@ -70,8 +78,6 @@ elif arguments.w:
 else:
     feature_df = pd.DataFrame()
 
-
-#
 #################################################################################
 
 ncbi         = ete3.NCBITaxa()
@@ -80,6 +86,37 @@ if os.path.isfile(filename):
     tree = ete3.Tree(filename, format=1)
 else:
     raise SystemExit('*ERROR: provided path to newick file does not exist!')
+
+#################################################################################
+
+if arguments.r:
+    
+    if os.path.isfile(arguments.r):
+        ref_tree = ete3.Tree(arguments.r, format=1)
+    else:
+        raise SystemExit('*ERROR: provided path to newick file containing reference root does not exist!')
+    
+    for node in sorted( ref_tree.children, key=len ):
+        if node.is_leaf():
+            leaf = tree.get_leaves_by_name(node.name)[0]
+            tree.set_outgroup(leaf)
+
+        else:
+            is_it_monophyletic, clade_type, fucking_up = tree.check_monophyly(
+                node.get_leaf_names(), 
+                'name',
+                unrooted=False
+            )
+            if is_it_monophyletic:
+                equivalent = tree.get_common_ancestor(node.get_leaf_names())
+                tree.set_outgroup(equivalent)
+            else:
+                tree.set_outgroup(fucking_up.pop())
+                equivalent = tree.get_common_ancestor(node.get_leaf_names())
+                tree.set_outgroup(equivalent)
+        
+#################################################################################
+
 #
 # leaves are names as eggNOG
 #
