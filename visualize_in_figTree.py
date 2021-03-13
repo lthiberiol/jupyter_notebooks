@@ -36,6 +36,10 @@ group.add_argument('-e',
                    action='store_true',
                    help  ="Leaves named in eggNOG's style\n"
                           '<taxID.locus_tag>')
+group.add_argument('-a',
+                   type=str,
+                   help  ="Leaves named using assembly accession: GC[AF]_\d+\.\d+\n"
+                          '~/work/assembly_summary_(refseq|genbank).txt')
 
 group2     = parser.add_argument_group('Annotation features options',
                                        'Annotated features must be provided as tables '
@@ -67,6 +71,7 @@ arguments      = parser.parse_args()
 by_sci_name    = arguments.n
 by_protein_acc = arguments.p
 as_eggNOG      = arguments.e
+assembly_sum   = arguments.a
 filename       = arguments.newick_file
 
 if   arguments.c:
@@ -116,6 +121,46 @@ if arguments.r:
                 tree.set_outgroup(equivalent)
         
 #################################################################################
+
+#
+# leaf names are assembly_accessions
+#
+if assembly_sum:
+
+    header = 'assembly_accession bioproject biosample wgs_master refseq_category taxid species_taxid \
+              organism_name infraspecific_name isolate version_status assembly_level release_type \
+              genome_rep seq_rel_date asm_name submitter gbrs_paired_asm paired_asm_comp ftp_path \
+              excluded_from_refseq relation_to_type_material'.split()
+
+    assembly_summary = pd.read_csv(assembly_sum,
+                                   sep='\t',
+                                   index_col=0,
+                                   header=None,
+                                   names=header,
+                                   comment='#')
+
+    assembly_summary = assembly_summary.reindex(index=tree.get_leaf_names())
+
+    acc2tax    = {}
+    lineage_df = pd.DataFrame()
+    for index, row in assembly_summary.iterrows():
+        tax_id         = row.taxid
+        acc2tax[index] = tax_id
+
+        tmp_lineage = pd.Series({rank : taxon
+                                 for taxon, rank in ncbi.get_rank(
+                                     ncbi.get_lineage(tax_id)).items()
+                                })
+        tmp_lineage = pd.Series(index=tmp_lineage.index,
+                                data =ncbi.translate_to_names(tmp_lineage))
+
+        tmp_lineage.name = tax_id
+
+        lineage_df = lineage_df.append(tmp_lineage)
+
+    lineage_df.drop(columns=['no rank'], inplace=True)
+    lineage_df = lineage_df[~lineage_df.index.duplicated()]
+
 
 #
 # leaves are names as eggNOG
@@ -243,7 +288,7 @@ for count, node in enumerate(tree.traverse()):
             tmp_acc = None
             if regex:
                 tmp_acc = regex.group(1).replace('_', ' ')
-        elif as_eggNOG:
+        elif as_eggNOG or assembly_sum:
             tmp_acc = node.name
         else:
             continue
